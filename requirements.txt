@@ -1,2 +1,2 @@
-twikit==1.1.16
+twikit==2.3.1
 requests
