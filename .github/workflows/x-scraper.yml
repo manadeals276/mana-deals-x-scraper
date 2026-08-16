@@ -1,4 +1,4 @@
-name: Mana Deals X Scraper
+name: Mana Deals X Collector
 
 on:
   workflow_dispatch:
@@ -6,50 +6,80 @@ on:
   schedule:
     - cron: "*/10 * * * *"
 
+# Prevent two scraper runs from modifying
+# seen_posts.json at the same time.
+concurrency:
+  group: mana-deals-x-collector
+  cancel-in-progress: false
+
 permissions:
   contents: write
 
-concurrency:
-  group: mana-deals-x-scraper
-  cancel-in-progress: false
-
 jobs:
   scrape:
+    name: Scrape X Deals
     runs-on: ubuntu-latest
 
     steps:
+
+      # ------------------------------------------------------
+      # 1. Checkout repository
+      # ------------------------------------------------------
+
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # ------------------------------------------------------
+      # 2. Setup Python
+      # ------------------------------------------------------
 
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
+      # ------------------------------------------------------
+      # 3. Install dependencies
+      # ------------------------------------------------------
+
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
-          python -m pip install twifork
+          pip install -r requirements.txt
+
+      # ------------------------------------------------------
+      # 4. Run X collector
+      # ------------------------------------------------------
 
       - name: Run X collector
         env:
           X_COOKIES_JSON: ${{ secrets.X_COOKIES_JSON }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           MANA_WORKER_URL: ${{ secrets.MANA_WORKER_URL }}
         run: |
           python scrapper.py
 
+      # ------------------------------------------------------
+      # 5. Save collector state
+      # ------------------------------------------------------
+
       - name: Save collector state
         run: |
           git config user.name "mana-deals-bot"
-          git config user.email "actions@users.noreply.github.com"
+          git config user.email "actions@github.com"
 
           git add seen_posts.json new_deals.json
 
           if git diff --cached --quiet; then
-            echo "No state changes."
-          else
-            git commit -m "Update X collector state"
-            git push
+            echo "No state changes to commit."
+            exit 0
           fi
+
+          git commit -m "Update X collector state"
+
+          # Get any changes pushed by another workflow/run
+          git pull --rebase origin main
+
+          # Push updated collector state
+          git push origin main
