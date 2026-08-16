@@ -18,14 +18,14 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install Twikit
+      - name: Install Twifork
         run: |
           python -m pip install --upgrade pip
-          python -m pip install "twikit==2.3.1"
+          python -m pip install twifork
 
-      - name: Verify Twikit
+      - name: Verify Twifork
         run: |
-          python -c "import twikit; print('Twikit imported successfully')"
+          python -c "import twikit; print('Twifork/Twikit API imported successfully')"
 
       - name: Run X collector
         env:
