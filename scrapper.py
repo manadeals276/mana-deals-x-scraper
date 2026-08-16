@@ -4,7 +4,7 @@ import os
 import re
 from pathlib import Path
 
-from twikit import Client
+from twifork import Client
 
 
 # ============================================================
