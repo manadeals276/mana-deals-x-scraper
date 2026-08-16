@@ -16,7 +16,7 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.11"
 
       - name: Install Twikit
         run: |
@@ -25,7 +25,7 @@ jobs:
 
       - name: Verify Twikit
         run: |
-          python -c "import twikit; print('Twikit installed:', twikit.__version__)"
+          python -c "import twikit; print('Twikit imported successfully')"
 
       - name: Run X collector
         env:
