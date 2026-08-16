@@ -31,7 +31,7 @@ jobs:
         env:
           X_COOKIES_JSON: ${{ secrets.X_COOKIES_JSON }}
         run: |
-          python scraper.py
+          python scrapper.py
 
       - name: Save collector state
         run: |
