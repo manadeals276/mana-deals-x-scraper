@@ -3,28 +3,26 @@ import json
 import os
 import re
 from pathlib import Path
+from urllib.request import Request, urlopen
 
 from twikit import Client
 
 
 # ============================================================
-# MANA DEALS X SCRAPER
+# MANA DEALS X COLLECTOR
 # ============================================================
 
-SOURCES = [
-    "dealztrendz",
-    "Tech_glareOffl",
-    "DealBeeOfficial",
-]
+SOURCES = {
+    "dealztrendz": "1045737414625382400",
+    "Tech_glareOffl": "1196118601415053314",
+    "DealBeeOfficial": "2923571768",
+}
+
+TWEETS_PER_ACCOUNT = 20
+MAX_DEALS_PER_ACCOUNT = 5
 
 SEEN_FILE = Path("seen_posts.json")
 DEALS_FILE = Path("new_deals.json")
-
-# Maximum candidates sent to Cloudflare from each account
-MAX_DEALS_PER_ACCOUNT = 5
-
-# Maximum recent tweets checked per account
-TWEETS_PER_ACCOUNT = 20
 
 
 # ============================================================
@@ -39,9 +37,9 @@ DEAL_WORDS = [
     "coupon",
     "cashback",
     "sale",
-    "price",
     "off",
     "save",
+    "price drop",
     "bank offer",
     "credit card",
     "debit card",
@@ -71,12 +69,10 @@ STORE_WORDS = [
 # ============================================================
 
 def load_seen():
-
     if not SEEN_FILE.exists():
         return {}
 
     try:
-
         data = json.loads(
             SEEN_FILE.read_text(
                 encoding="utf-8"
@@ -86,15 +82,12 @@ def load_seen():
         if isinstance(data, dict):
             return data
 
-        return {}
-
     except Exception as error:
-
         print(
             f"Warning: could not load seen_posts.json: {error}"
         )
 
-        return {}
+    return {}
 
 
 # ============================================================
@@ -102,7 +95,6 @@ def load_seen():
 # ============================================================
 
 def save_seen(data):
-
     SEEN_FILE.write_text(
         json.dumps(
             data,
@@ -114,24 +106,41 @@ def save_seen(data):
 
 
 # ============================================================
+# SAFE ATTRIBUTE
+# ============================================================
+
+def safe_attr(obj, name, default=None):
+    try:
+        value = getattr(
+            obj,
+            name,
+            default
+        )
+
+        if value is None:
+            return default
+
+        return value
+
+    except Exception:
+        return default
+
+
+# ============================================================
 # GET TWEET TEXT
 # ============================================================
 
 def get_tweet_text(tweet):
 
-    try:
+    text = safe_attr(
+        tweet,
+        "text",
+        ""
+    )
 
-        return str(
-            getattr(
-                tweet,
-                "text",
-                ""
-            ) or ""
-        ).strip()
-
-    except Exception:
-
-        return ""
+    return str(
+        text or ""
+    ).strip()
 
 
 # ============================================================
@@ -140,63 +149,55 @@ def get_tweet_text(tweet):
 
 def get_tweet_id(tweet):
 
-    try:
+    tweet_id = safe_attr(
+        tweet,
+        "id",
+        None
+    )
 
-        value = getattr(
-            tweet,
-            "id",
-            None
-        )
-
-        if value is None:
-            return None
-
-        return str(value)
-
-    except Exception:
-
+    if tweet_id is None:
         return None
 
-
-# ============================================================
-# GET TWEET DATE
-# ============================================================
-
-def get_tweet_date(tweet):
-
-    try:
-
-        return str(
-            getattr(
-                tweet,
-                "created_at",
-                ""
-            ) or ""
-        )
-
-    except Exception:
-
-        return ""
+    return str(
+        tweet_id
+    )
 
 
 # ============================================================
-# URL EXTRACTION
+# EXTRACT URLS
 # ============================================================
 
 def extract_urls(tweet):
 
+    text = get_tweet_text(
+        tweet
+    )
+
     urls = []
 
     # --------------------------------------------------------
-    # URLs supplied by Twifork
+    # URLs directly present in tweet text
+    # --------------------------------------------------------
+
+    text_urls = re.findall(
+        r"https?://[^\s<>\"]+",
+        text
+    )
+
+    urls.extend(
+        text_urls
+    )
+
+    # --------------------------------------------------------
+    # Twikit URL objects, if available
     # --------------------------------------------------------
 
     try:
 
-        tweet_urls = getattr(
+        tweet_urls = safe_attr(
             tweet,
             "urls",
-            None
+            []
         )
 
         if tweet_urls:
@@ -224,61 +225,30 @@ def extract_urls(tweet):
                         or item.get(
                             "url"
                         )
-                        or item.get(
-                            "display_url"
-                        )
                     )
 
                 else:
 
-                    try:
-
-                        url = getattr(
+                    url = (
+                        safe_attr(
                             item,
                             "expanded_url",
                             None
                         )
-
-                        if not url:
-
-                            url = getattr(
-                                item,
-                                "url",
-                                None
-                            )
-
-                    except Exception:
-
-                        url = None
+                        or safe_attr(
+                            item,
+                            "url",
+                            None
+                        )
+                    )
 
                 if url:
-
                     urls.append(
                         str(url)
                     )
 
-    except Exception as error:
-
-        print(
-            f"URL object warning: {error}"
-        )
-
-    # --------------------------------------------------------
-    # URLs directly inside tweet text
-    # --------------------------------------------------------
-
-    text = get_tweet_text(
-        tweet
-    )
-
-    text_urls = re.findall(
-        r"https?://[^\s<>\"]+",
-        text
-    )
-
-    urls.extend(
-        text_urls
-    )
+    except Exception:
+        pass
 
     # --------------------------------------------------------
     # Clean + deduplicate
@@ -300,38 +270,11 @@ def extract_urls(tweet):
             url
             and url not in cleaned
         ):
-
             cleaned.append(
                 url
             )
 
     return cleaned
-
-
-# ============================================================
-# REMOVE TWITTER SHORT LINKS DUPLICATES
-# ============================================================
-
-def clean_urls(urls):
-
-    result = []
-
-    for url in urls:
-
-        if not url:
-            continue
-
-        url = str(
-            url
-        ).strip()
-
-        if url not in result:
-
-            result.append(
-                url
-            )
-
-    return result
 
 
 # ============================================================
@@ -355,45 +298,49 @@ def looks_like_candidate(
     if lower.startswith(
         "rt @"
     ):
-
         return False
 
     # --------------------------------------------------------
     # Ignore obvious replies
     # --------------------------------------------------------
 
-    if lower.startswith(
-        "@"
-    ):
-
+    if lower.startswith("@"):
         return False
 
     # --------------------------------------------------------
-    # Must have a shopping/offer URL
+    # Must have URL
     # --------------------------------------------------------
 
     if not urls:
-
         return False
 
     # --------------------------------------------------------
-    # Price indicators
+    # Price
     # --------------------------------------------------------
 
     has_rupee = (
         "₹" in text
-        or "rs." in lower
-        or "rs " in lower
-        or "inr" in lower
+        or bool(
+            re.search(
+                r"\brs\.?\s*\d",
+                lower
+            )
+        )
+        or bool(
+            re.search(
+                r"\binr\s*\d",
+                lower
+            )
+        )
     )
 
     # --------------------------------------------------------
-    # Percentage discount
+    # Percentage
     # --------------------------------------------------------
 
     has_percentage = bool(
         re.search(
-            r"\b\d{1,3}\s*%\s*(off|discount)?\b",
+            r"\b\d{1,3}\s*%\s*(off|discount)?",
             lower
         )
     )
@@ -408,7 +355,7 @@ def looks_like_candidate(
     )
 
     # --------------------------------------------------------
-    # Store mention
+    # Store
     # --------------------------------------------------------
 
     has_store = any(
@@ -417,41 +364,29 @@ def looks_like_candidate(
     )
 
     # --------------------------------------------------------
-    # Product-looking content
-    #
-    # We don't require every deal to have a price because
-    # the Cloudflare AI layer can process bank/coupon offers.
+    # Strong enough candidate
     # --------------------------------------------------------
 
-    has_product_signal = (
-        has_rupee
-        or has_percentage
-        or has_store
-    )
+    if has_rupee:
+        return True
 
-    # --------------------------------------------------------
-    # Strong candidate
-    # --------------------------------------------------------
-
-    if has_product_signal and (
+    if has_percentage and (
         has_deal_word
-        or has_rupee
-        or has_percentage
         or has_store
     ):
+        return True
 
+    if has_deal_word and has_store:
         return True
 
     return False
 
 
 # ============================================================
-# SEND DEAL TO CLOUDFLARE WORKER
+# SEND TO CLOUDFLARE WORKER
 # ============================================================
 
-async def send_to_worker(
-    deal
-):
+async def send_to_worker(deal):
 
     worker_url = os.environ.get(
         "MANA_WORKER_URL"
@@ -459,21 +394,39 @@ async def send_to_worker(
 
     if not worker_url:
 
-        raise RuntimeError(
-            "MANA_WORKER_URL GitHub secret is missing."
+        print(
+            "ERROR: MANA_WORKER_URL is missing."
         )
+
+        return False
 
     payload = {
         "source": deal["source"],
-
         "tweet_id": deal["tweet_id"],
-
         "tweet_url": deal["tweet_url"],
-
         "text": deal["text"],
-
         "urls": deal["urls"],
     }
+
+    body = json.dumps(
+        payload,
+        ensure_ascii=False
+    ).encode(
+        "utf-8"
+    )
+
+    request = Request(
+        worker_url,
+        data=body,
+        headers={
+            "Content-Type":
+                "application/json",
+
+            "User-Agent":
+                "ManaDeals-X-Collector/1.0",
+        },
+        method="POST"
+    )
 
     print()
     print(
@@ -490,40 +443,15 @@ async def send_to_worker(
 
     try:
 
-        import urllib.request
-
-        body = json.dumps(
-            payload,
-            ensure_ascii=False
-        ).encode(
-            "utf-8"
-        )
-
-        request = urllib.request.Request(
-            worker_url,
-            data=body,
-            headers={
-                "Content-Type":
-                    "application/json",
-
-                "User-Agent":
-                    "ManaDeals-X-Collector/1.0",
-            },
-
-            method="POST"
-        )
-
-        # Run blocking urllib in a thread
-        # so the async scraper isn't blocked.
-
         response = await asyncio.to_thread(
-            urllib.request.urlopen,
+            urlopen,
             request,
             timeout=30
         )
 
         response_body = (
-            response.read()
+            response
+            .read()
             .decode(
                 "utf-8",
                 errors="replace"
@@ -540,30 +468,31 @@ async def send_to_worker(
             f"{response_body[:1000]}"
         )
 
-        return True
+        return (
+            200 <= response.status < 300
+        )
 
     except Exception as error:
 
-        print()
         print(
             "Worker request failed:"
         )
 
         print(
-            f"{type(error).__name__}: "
-            f"{error}"
+            f"{type(error).__name__}: {error}"
         )
 
         return False
 
 
 # ============================================================
-# PROCESS ACCOUNT
+# PROCESS ONE X ACCOUNT
 # ============================================================
 
 async def process_account(
     client,
     username,
+    user_id,
     seen
 ):
 
@@ -578,6 +507,10 @@ async def process_account(
 
     print(
         "================================"
+    )
+
+    print(
+        f"User ID: {user_id}"
     )
 
     previous_ids = set(
@@ -595,29 +528,21 @@ async def process_account(
     try:
 
         # ----------------------------------------------------
-        # GET USER
-        # ----------------------------------------------------
-
-        user = await client.get_user_by_screen_name(
-            username
-        )
-
-        print(
-            f"User ID: {user.id}"
-        )
-
-        # ----------------------------------------------------
-        # GET RECENT POSTS
+        # IMPORTANT:
+        # Fetch directly using USER ID.
+        #
+        # This avoids get_user_by_screen_name()
+        # and avoids unnecessary User parsing.
         # ----------------------------------------------------
 
         tweets = await client.get_user_tweets(
-            user.id,
+            user_id,
             "Tweets",
             count=TWEETS_PER_ACCOUNT
         )
 
         # ----------------------------------------------------
-        # PROCESS POSTS
+        # Process tweets
         # ----------------------------------------------------
 
         for tweet in tweets:
@@ -627,7 +552,6 @@ async def process_account(
             )
 
             if not tweet_id:
-
                 continue
 
             current_ids.append(
@@ -636,7 +560,6 @@ async def process_account(
 
             # Already processed
             if tweet_id in previous_ids:
-
                 continue
 
             text = get_tweet_text(
@@ -649,21 +572,15 @@ async def process_account(
             )
 
             print(
-                text[:400]
+                text[:500]
+            )
+
+            urls = extract_urls(
+                tweet
             )
 
             # ------------------------------------------------
-            # URLs
-            # ------------------------------------------------
-
-            urls = clean_urls(
-                extract_urls(
-                    tweet
-                )
-            )
-
-            # ------------------------------------------------
-            # Candidate filter
+            # Filter
             # ------------------------------------------------
 
             if not looks_like_candidate(
@@ -672,19 +589,18 @@ async def process_account(
             ):
 
                 print(
-                    "Not a strong deal candidate."
+                    "Not classified as a deal."
                 )
 
                 continue
 
             tweet_url = (
-                "https://x.com/"
+                f"https://x.com/"
                 f"{username}/status/"
                 f"{tweet_id}"
             )
 
             deal = {
-
                 "source":
                     username,
 
@@ -699,12 +615,6 @@ async def process_account(
 
                 "urls":
                     urls,
-
-                "created_at":
-                    get_tweet_date(
-                        tweet
-                    ),
-
             }
 
             candidates.append(
@@ -730,23 +640,21 @@ async def process_account(
                     f"  {url}"
                 )
 
-            # Don't collect unlimited candidates
-            if len(candidates) >= MAX_DEALS_PER_ACCOUNT:
-
+            if (
+                len(candidates)
+                >= MAX_DEALS_PER_ACCOUNT
+            ):
                 break
 
         # ----------------------------------------------------
-        # Update seen IDs
+        # Save IDs
         # ----------------------------------------------------
 
         merged_ids = (
             current_ids
-            + list(
-                previous_ids
-            )
+            + list(previous_ids)
         )
 
-        # Keep last 100 tweet IDs
         seen[username] = list(
             dict.fromkeys(
                 merged_ids
@@ -771,8 +679,8 @@ async def process_account(
             f"{error}"
         )
 
+        # Don't destroy existing state
         if username not in seen:
-
             seen[username] = []
 
         return []
@@ -798,7 +706,7 @@ async def main():
     )
 
     # --------------------------------------------------------
-    # CHECK WORKER URL
+    # Worker
     # --------------------------------------------------------
 
     worker_url = os.environ.get(
@@ -816,11 +724,11 @@ async def main():
     )
 
     print(
-        worker_url
+        "***"
     )
 
     # --------------------------------------------------------
-    # CHECK X COOKIES
+    # X Cookies
     # --------------------------------------------------------
 
     cookie_json = os.environ.get(
@@ -832,14 +740,6 @@ async def main():
         raise RuntimeError(
             "X_COOKIES_JSON GitHub secret is missing."
         )
-
-    # --------------------------------------------------------
-    # Validate cookies JSON
-    # --------------------------------------------------------
-
-    cookies_path = Path(
-        "cookies.json"
-    )
 
     try:
 
@@ -856,22 +756,25 @@ async def main():
                 "X_COOKIES_JSON must be a JSON object."
             )
 
-        cookies_path.write_text(
-            json.dumps(
-                cookies
-            ),
-            encoding="utf-8"
-        )
-
     except Exception as error:
 
         raise RuntimeError(
-            "Invalid X_COOKIES_JSON: "
-            f"{error}"
+            f"Invalid X_COOKIES_JSON: {error}"
         )
 
+    cookies_path = Path(
+        "cookies.json"
+    )
+
+    cookies_path.write_text(
+        json.dumps(
+            cookies
+        ),
+        encoding="utf-8"
+    )
+
     # --------------------------------------------------------
-    # Create Twifork client
+    # Twikit client
     # --------------------------------------------------------
 
     client = Client(
@@ -879,7 +782,7 @@ async def main():
     )
 
     # --------------------------------------------------------
-    # Load X cookies
+    # Load cookies
     # --------------------------------------------------------
 
     client.load_cookies(
@@ -889,7 +792,7 @@ async def main():
     )
 
     # --------------------------------------------------------
-    # Load state
+    # State
     # --------------------------------------------------------
 
     seen = load_seen()
@@ -897,14 +800,15 @@ async def main():
     all_candidates = []
 
     # --------------------------------------------------------
-    # SCRAPE ALL SOURCES
+    # Scrape accounts
     # --------------------------------------------------------
 
-    for username in SOURCES:
+    for username, user_id in SOURCES.items():
 
         deals = await process_account(
             client,
             username,
+            user_id,
             seen
         )
 
@@ -913,7 +817,7 @@ async def main():
         )
 
     # --------------------------------------------------------
-    # SAVE LOCAL DEAL DATA
+    # Save new deals
     # --------------------------------------------------------
 
     DEALS_FILE.write_text(
@@ -926,7 +830,7 @@ async def main():
     )
 
     # --------------------------------------------------------
-    # SEND CANDIDATES TO WORKER
+    # Send to Worker
     # --------------------------------------------------------
 
     sent_count = 0
@@ -953,15 +857,12 @@ async def main():
         )
 
         if success:
-
             sent_count += 1
-
         else:
-
             failed_count += 1
 
     # --------------------------------------------------------
-    # SAVE SEEN STATE
+    # Save state
     # --------------------------------------------------------
 
     save_seen(
@@ -969,7 +870,7 @@ async def main():
     )
 
     # --------------------------------------------------------
-    # FINAL RESULT
+    # Final
     # --------------------------------------------------------
 
     print()
@@ -986,18 +887,15 @@ async def main():
     )
 
     print(
-        f"New candidates: "
-        f"{len(all_candidates)}"
+        f"New candidates: {len(all_candidates)}"
     )
 
     print(
-        f"Sent to Worker: "
-        f"{sent_count}"
+        f"Sent to Worker: {sent_count}"
     )
 
     print(
-        f"Worker failures: "
-        f"{failed_count}"
+        f"Worker failures: {failed_count}"
     )
 
     print(
