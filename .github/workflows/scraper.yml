@@ -1,7 +1,6 @@
-
 name: Mana Deals X Collector
 
-on:
+"on":
   workflow_dispatch:
 
   schedule:
@@ -34,7 +33,7 @@ jobs:
         run: |
           python scraper.py
 
-      - name: Save seen post IDs
+      - name: Save collector state
         run: |
           git config user.name "mana-deals-bot"
           git config user.email "actions@users.noreply.github.com"
@@ -42,6 +41,6 @@ jobs:
           git add seen_posts.json new_deals.json
 
           git diff --cached --quiet || \
-            git commit -m "Update X deal collector state"
+            git commit -m "Update X collector state"
 
           git push
