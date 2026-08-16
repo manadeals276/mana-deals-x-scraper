@@ -9,9 +9,7 @@ from twikit import Client
 
 
 SOURCES = [
-    "dealztrendz",
     "Tech_glareOffl",
-    "DealBeeOfficial",
 ]
 
 SEEN_FILE = Path("seen_posts.json")
